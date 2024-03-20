@@ -5,12 +5,29 @@ import java.util.*;
 public class Main {
     final static int countOfThreads = 1000;
     public static final Map<Integer, Integer> sizeToFreq = new HashMap<>();
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
 
         long startTs = System.currentTimeMillis(); // start time
 
+        Thread threadOfMax = new Thread(() -> {
+            while (!Thread.interrupted()) {
+                synchronized (sizeToFreq) {
+                    try {
+                        sizeToFreq.wait();
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    sizeToFreq.entrySet().stream()
+                            .max(Map.Entry.comparingByValue())
+                            .ifPresent(max -> System.out.printf("Самое частое количество текущих повторений %d (встретилось %d раз)\n", max.getKey(), max.getValue()));
+                }
+            }
+        });
+        threadOfMax.start();
+
+        List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < countOfThreads; i++) {
-            new Thread(() -> {
+            Thread newThread = new Thread(() -> {
                 String route = generateRoute("RLRFR", 100);
                 int countR = (int) route.chars().filter(c -> c == 'R').count();
 
@@ -20,20 +37,22 @@ public class Main {
                     } else {
                         sizeToFreq.put(countR, 1);
                     }
+                    sizeToFreq.notify();
                 }
-            }).start();
+            });
+            threads.add(newThread);
+        }
+        for (Thread thread : threads) {
+            thread.start();
+            thread.join();
         }
 
-        sizeToFreq.entrySet().stream()
-                .max(Map.Entry.comparingByValue())
-                .ifPresent(max -> System.out.printf("Самое частое количество повторений %d (встретилось %d раз)\n", max.getKey(), max.getValue()));
-
-        System.out.println("Другие размеры:");
-        sizeToFreq.forEach((key, value) -> System.out.printf("- %d (%d раз)\n", key, value));
+        threadOfMax.interrupt();
 
         long endTs = System.currentTimeMillis(); // end time
         System.out.println("Time: " + (endTs - startTs) + "ms");
     }
+
     public static String generateRoute(String letters, int length) {
         Random random = new Random();
         StringBuilder route = new StringBuilder();
